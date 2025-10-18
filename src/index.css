@@ -1,0 +1,164 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Theme */
+:root{
+  --bg:#0f172a;       /* slate-900 */
+  --surface:#0b1220;  /* deep panel */
+  --card:#0f172a;     /* top card */
+  --line:rgba(255,255,255,.08);
+  --text:#e5e7eb;     /* gray-200 */
+  --muted:#94a3b8;    /* slate-400 */
+  --accent:#22c55e;   /* green-500 */
+  --danger:#ef4444;   /* red-500 */
+}
+
+/* Base */
+html, body { height: 100%; }
+body {
+  @apply text-[15px] leading-relaxed;
+  color: var(--text);
+  background:
+    radial-gradient(900px 500px at 120% -10%, rgba(34,197,94,.10), transparent 60%),
+    radial-gradient(900px 500px at -10% 120%, rgba(6,182,212,.10), transparent 60%),
+    var(--bg);
+}
+
+/* Card */
+.card {
+  background: linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.015));
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  padding: 20px;
+  max-width: 980px;
+  width: 100%;
+}
+
+/* Inputs */
+.input {
+  width: 100%;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  color: var(--text);
+  border-radius: 14px;
+  padding: 12px 14px;
+  outline: none;
+  transition: box-shadow .15s, border-color .15s;
+}
+.input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 6px rgba(34,197,94,.18);
+}
+
+/* Buttons */
+.btn { @apply inline-flex items-center justify-center font-semibold rounded-xl px-4 py-3 select-none transition; }
+.btn-primary { background: var(--accent); color:#0b1220; }
+.btn-primary:hover { transform: translateY(-1px); }
+.btn-secondary { background: var(--surface); color: var(--text); border: 1px solid var(--line); }
+.btn-ghost { background: transparent; color: var(--text); }
+.btn-danger { background: var(--danger); color:#fff; }
+.btn-icon { padding: 10px 12px; border-radius: 12px; }
+
+/* Blocks */
+.metric {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 14px;
+}
+.metric .label { color: var(--muted); font-size: 12px; margin-bottom: 6px; }
+.metric .value { font-weight: 800; font-size: clamp(18px, 2vw, 22px); }
+
+/* Text */
+.text-muted { color: var(--muted); }
+.badge { @apply inline-flex items-center gap-2 text-xs text-muted; }
+
+/* Modal (Preview) */
+.modal-backdrop {
+  position: fixed; inset: 0;
+  background: rgba(2,6,23,.6); /* slate-950/60 */
+  backdrop-filter: blur(2px);
+  display: grid; place-items: center;
+  z-index: 50;
+}
+.modal-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  width: min(92vw, 900px);
+  max-height: 90vh;
+  padding: 16px;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  gap: 12px;
+}
+.modal-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.modal-body {
+  overflow: auto;
+  display: grid; place-items: center;
+  border: 1px dashed var(--line);
+  border-radius: 12px;
+  padding: 10px;
+  background: #0a0f1c;
+}
+.modal-body img {
+  max-width: 100%;
+  max-height: 70vh;
+  display: block;
+  border-radius: 12px;
+}
+.modal-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-start; }
+
+/* =========================================================
+   MUI – unify TextField padding when label is on top (shrink)
+   מכסה גם Filled וגם Outlined + נותן "מרווח נשימה" ל-label
+   ========================================================= */
+
+/* Filled inputs – תוכן השדה */
+.MuiFormControl-root.MuiTextField-root
+  .MuiFilledInput-root
+  .MuiFilledInput-input {
+  padding-top: 20.2px !important;   /* כמו month picker */
+  padding-bottom: 3.2px !important;
+  padding-inline: 16px !important;
+}
+
+/* Outlined inputs – תוכן השדה */
+.MuiFormControl-root.MuiTextField-root
+  .MuiOutlinedInput-root
+  .MuiOutlinedInput-input {
+  padding-top: 20.2px !important;
+  padding-bottom: 3.2px !important;
+  padding-inline: 16px !important;
+}
+
+/* כשה-label במצב shrink (למעלה) – לשמור על אותו מרווח ויזואלי */
+.MuiFormControl-root.MuiTextField-root
+  .MuiInputLabel-root.MuiInputLabel-shrink {
+  line-height: 1.1;            /* טיפה פחות צפוף */
+  transform-origin: top right; /* RTL */
+}
+
+/* ספציפיות חזקה יותר: label + input (גם Filled וגם Outlined) */
+.MuiFormControl-root.MuiTextField-root
+  .MuiInputLabel-root.MuiInputLabel-shrink
+  + .MuiInputBase-root
+  .MuiInputBase-input {
+  padding-top: 20.2px !important;
+  padding-bottom: 3.2px !important;
+}
+
+/* מקרים של size="small" – אותה התנהגות */
+.MuiFormControl-root.MuiTextField-root
+  .MuiInputBase-sizeSmall
+  .MuiInputBase-input {
+  padding-top: 20.2px !important;
+  padding-bottom: 3.2px !important;
+}
+
+/* אופציונלי: להדגיש את הטקסט של ה-label מעט (נראה נקי יותר) */
+.MuiFormControl-root.MuiTextField-root
+  .MuiInputLabel-root {
+  font-weight: 500;
+}
