@@ -25,6 +25,7 @@ export type CalcSession = {
   title: string;
   createdAt: string;
   percent: number;
+  monthYear?: string; // ✅ חדש - בפורמט YYYY-MM
   items: CalcItem[];
   deductions: Deduction[];
 };

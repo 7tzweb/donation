@@ -1,32 +1,70 @@
-import { Low } from "lowdb"
-import { LocalStorage } from "lowdb/browser"
-import type { DBData, CalcSession } from "./types"
+// src/db.ts
+import type { CalcSession } from "./types";
+import { auth } from "./firebase";
 
-const adapter = new LocalStorage<DBData>("calc_pro_db")
-const db = new Low<DBData>(adapter, { sessions: [] })
+import {
+  getFirestore,
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  setDoc,
+  deleteDoc,
+  query,
+  orderBy,
+} from "firebase/firestore";
+
+/** מוודא שיש משתמש מחובר ומחזיר UID, אחרת זורק שגיאה */
+function ensureUser(): string {
+  const uid = auth.currentUser?.uid;
+  if (!uid) {
+    throw new Error("Not authenticated. Please sign in first.");
+  }
+  return uid;
+}
+
+/** מופעי השירותים */
+const db = getFirestore();
+
+/** אוסף הסשנים למשתמש */
+function sessionsCol(uid: string) {
+  return collection(db, "users", uid, "sessions");
+}
+
+// ========================= API ציבורי (כמו שהיה) =========================
 
 export async function initDB(): Promise<void> {
-  await db.read()
-  db.data ||= { sessions: [] }
-  await db.write()
+  // אין אתחול מיוחד – רק מאשר שיש משתמש מחובר
+  ensureUser();
 }
+
 export async function listSessions(): Promise<CalcSession[]> {
-  await db.read()
-  return db.data!.sessions
+  const uid = ensureUser();
+  const q = query(sessionsCol(uid), orderBy("createdAt", "desc"));
+  const snap = await getDocs(q);
+  const results: CalcSession[] = [];
+  snap.forEach((d) => results.push(d.data() as CalcSession));
+  return results;
 }
+
 export async function getSession(id: string): Promise<CalcSession | null> {
-  await db.read()
-  return db.data!.sessions.find(s => s.id === id) ?? null
+  const uid = ensureUser();
+  const ref = doc(db, "users", uid, "sessions", id);
+  const s = await getDoc(ref);
+  return s.exists() ? (s.data() as CalcSession) : null;
 }
+
 export async function saveSession(session: CalcSession): Promise<void> {
-  await db.read()
-  const idx = db.data!.sessions.findIndex(s => s.id === session.id)
-  if (idx === -1) db.data!.sessions.unshift(session)
-  else db.data!.sessions[idx] = session
-  await db.write()
+  const uid = ensureUser();
+
+  // כאן אין העלאה ל-Storage: attachment.dataUrl נשמר כמו שהוא במסמך (Base64)
+  // שים לב למגבלת ~1MiB למסמך – ברוב הקבלות זה מספיק.
+  const ref = doc(db, "users", uid, "sessions", session.id);
+  await setDoc(ref, session, { merge: true });
 }
+
 export async function deleteSession(id: string): Promise<void> {
-  await db.read()
-  db.data!.sessions = db.data!.sessions.filter(s => s.id !== id)
-  await db.write()
+  const uid = ensureUser();
+  const ref = doc(db, "users", uid, "sessions", id);
+  await deleteDoc(ref);
 }

@@ -26,6 +26,11 @@ import {
   Tooltip,
   InputAdornment,
   Paper,
+  CircularProgress,
+  Snackbar,
+  Alert,
+  Popover,
+  Grid,
 } from "@mui/material";
 
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
@@ -34,6 +39,9 @@ import DownloadOutlinedIcon from "@mui/icons-material/DownloadOutlined";
 import AttachFileIcon from "@mui/icons-material/AttachFile";
 import ChangeCircleIcon from "@mui/icons-material/ChangeCircle";
 import AddCircleIcon from "@mui/icons-material/AddCircle";
+import SaveOutlinedIcon from "@mui/icons-material/SaveOutlined";
+import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
+import CalendarMonthIcon from "@mui/icons-material/CalendarMonth";
 
 // ---------- helpers ----------
 const nf = new Intl.NumberFormat("he-IL", { maximumFractionDigits: 2 });
@@ -46,6 +54,57 @@ const monthInputDefault = () => {
   const yyyy = String(d.getFullYear());
   return `${yyyy}-${mm}`;
 };
+
+// כיווץ תמונה ל־JPEG מתחת ל־~900KB, מקס' ממד 2000px, איכות יורדת עד 0.5
+async function compressImageDataUrl(
+  inputDataUrl: string,
+  opts: { targetMaxBytes?: number; maxDim?: number; minQuality?: number } = {}
+): Promise<{ dataUrl: string; mime: string; ext: "jpg" }> {
+  const targetMaxBytes = opts.targetMaxBytes ?? 900 * 1024;
+  const maxDim = opts.maxDim ?? 2000;
+  const minQuality = opts.minQuality ?? 0.5;
+
+  const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+    const im = new Image();
+    im.onload = () => resolve(im);
+    im.onerror = reject;
+    im.src = inputDataUrl;
+  });
+
+  let { width, height } = img;
+  const scale = Math.min(1, maxDim / Math.max(width, height));
+  width = Math.max(1, Math.round(width * scale));
+  height = Math.max(1, Math.round(height * scale));
+
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d")!;
+  canvas.width = width;
+  canvas.height = height;
+  ctx.drawImage(img, 0, 0, width, height);
+
+  let quality = 0.82;
+  let out = canvas.toDataURL("image/jpeg", quality);
+
+  const bytes = (s: string) => Math.ceil((s.length * 3) / 4) - (s.endsWith("==") ? 2 : s.endsWith("=") ? 1 : 0);
+  while (bytes(out) > targetMaxBytes && quality > minQuality) {
+    quality = Math.max(minQuality, quality - 0.07);
+    out = canvas.toDataURL("image/jpeg", quality);
+  }
+
+  let shrink = 0.9;
+  while (bytes(out) > targetMaxBytes && Math.max(canvas.width, canvas.height) > 800) {
+    const nw = Math.round(canvas.width * shrink);
+    const nh = Math.round(canvas.height * shrink);
+    canvas.width = nw;
+    canvas.height = nh;
+    ctx.drawImage(img, 0, 0, nw, nh);
+    out = canvas.toDataURL("image/jpeg", quality);
+    shrink -= 0.08;
+    if (shrink < 0.6) break;
+  }
+
+  return { dataUrl: out, mime: "image/jpeg", ext: "jpg" };
+}
 
 // 0 -> "" להצגה ריקה בשדות המספר
 type CalcItemLocal = Omit<CalcItem, "value"> & { value: number | "" };
@@ -65,6 +124,125 @@ const toLocalDeductions = (arr?: Deduction[]): DeductionLocal[] =>
 
 const toNum = (v: number | "" | undefined) => (v === "" || v == null ? 0 : Number(v));
 
+/* ===============================
+   MonthYearField – שדה חודש/שנה
+   שומר value כ- "YYYY-MM"
+   מציג "MM/YYYY" + פופאובר 01–12
+   =============================== */
+function formatDisplay(v: string) {
+  const [yyyy, mm] = (v || "").split("-");
+  if (!yyyy || !mm) return "";
+  return `${mm}/${yyyy}`;
+}
+function clampYear(y: number) {
+  if (!Number.isFinite(y)) return new Date().getFullYear();
+  return Math.min(9999, Math.max(1900, y));
+}
+function MonthYearField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (next: string) => void;
+}) {
+  const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
+  const open = Boolean(anchorEl);
+  const [yyyy, mm] = (value || monthInputDefault()).split("-");
+  const [yearEdit, setYearEdit] = useState<string>(yyyy);
+
+  useEffect(() => {
+    const [y] = (value || monthInputDefault()).split("-");
+    setYearEdit(y);
+  }, [value]);
+
+  const handleOpen = (e: React.MouseEvent<HTMLElement>) => setAnchorEl(e.currentTarget);
+  const handleClose = () => setAnchorEl(null);
+
+  const setMonth = (m: number) => {
+    const y = clampYear(parseInt(yearEdit || yyyy, 10));
+    const next = `${y}-${String(m).padStart(2, "0")}`;
+    onChange(next);
+    handleClose();
+  };
+
+  const setThisMonth = () => {
+    const d = new Date();
+    onChange(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+    handleClose();
+  };
+
+  const clearVal = () => {
+    const d = new Date();
+    onChange(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+    handleClose();
+  };
+
+  return (
+    <>
+      <TextField
+        label={label}
+        value={formatDisplay(value)}
+        onClick={handleOpen}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            setAnchorEl(e.currentTarget as HTMLElement);
+          }
+        }}
+        InputProps={{
+          readOnly: true,
+          endAdornment: (
+            <InputAdornment position="end">
+              <CalendarMonthIcon fontSize="small" />
+            </InputAdornment>
+          ),
+        }}
+        sx={{ width: 160, "& .MuiFilledInput-input": { py: 1.4, px: 2 }, cursor: "pointer" }}
+      />
+      <Popover
+        open={open}
+        anchorEl={anchorEl}
+        onClose={handleClose}
+        anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
+      >
+        <Box sx={{ p: 1.5, width: 300 }}>
+          <TextField
+            label="שנה"
+            type="number"
+            value={yearEdit}
+            onChange={(e) => setYearEdit(e.target.value.replace(/\D/g, ""))}
+            sx={{ width: "100%", "& .MuiFilledInput-input": { py: 1.2, px: 1.5 }, mb: 1.25 }}
+            inputProps={{ step: 1 }}
+          />
+          <Grid container spacing={1}>
+            {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+              <Grid item xs={3} key={m}>
+                <Button
+                  fullWidth
+                  variant={String(m).padStart(2, "0") === mm ? "contained" : "outlined"}
+                  onClick={() => setMonth(m)}
+                  sx={{ minWidth: 0, py: 1 }}
+                >
+                  {String(m).padStart(2, "0")}
+                </Button>
+              </Grid>
+            ))}
+          </Grid>
+
+          <Stack direction="row" justifyContent="space-between" sx={{ mt: 1.25 }}>
+            <Button onClick={clearVal} color="inherit">
+              נקה/איפוס
+            </Button>
+            <Button onClick={setThisMonth}>החודש</Button>
+          </Stack>
+        </Box>
+      </Popover>
+    </>
+  );
+}
+
 // ---------- component ----------
 type Props = { initial?: Partial<CalcSession>; onSave: (s: CalcSession) => Promise<void> };
 
@@ -76,7 +254,15 @@ export default function Calculator({ initial, onSave }: Props) {
   const [saving, setSaving] = useState(false);
   const [preview, setPreview] = useState<{ att: ImageAttachment; did: string } | null>(null);
 
-  // חודש/שנה (type=month) – משולב בשם
+  // אינדיקציות שמירה
+  const [justSaved, setJustSaved] = useState(false);
+  const [snack, setSnack] = useState<{ open: boolean; msg: string; severity: "success" | "error" }>({
+    open: false,
+    msg: "",
+    severity: "success",
+  });
+
+  // חודש/שנה – ערך שמור כ-YYYY-MM (ללא שינוי)
   const [monthYear, setMonthYear] = useState<string>(() => {
     const found = (initial?.title || "").match(/(\d{1,2})\/(\d{4})$/);
     if (found) {
@@ -99,10 +285,7 @@ export default function Calculator({ initial, onSave }: Props) {
   const sum = useMemo(() => items.reduce((a, b) => a + toNum(b.value), 0), [items]);
   const percentAmount = useMemo(() => sum * (percent / 100), [sum, percent]);
   const deductionsSum = useMemo(() => deductions.reduce((a, d) => a + toNum(d.amount), 0), [deductions]);
-  const percentMinusDeductions = useMemo(
-    () => percentAmount - deductionsSum,
-    [percentAmount, deductionsSum]
-  );
+  const percentMinusDeductions = useMemo(() => percentAmount - deductionsSum, [percentAmount, deductionsSum]);
   const remainingToDeduct = Math.max(percentMinusDeductions, 0);
   const overDeducted = Math.max(-percentMinusDeductions, 0);
   const total = useMemo(() => sum + percentAmount - deductionsSum, [sum, percentAmount, deductionsSum]);
@@ -146,18 +329,19 @@ export default function Calculator({ initial, onSave }: Props) {
   async function onFileChanged(d: DeductionLocal, e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
-    const dataUrl = await readFileAsDataURL(file);
+
+    const rawDataUrl = await readFileAsDataURL(file);
+    const compressed = await compressImageDataUrl(rawDataUrl);
+
     const datePart = new Date().toISOString().slice(0, 10);
-    const ext = file.name.includes(".")
-      ? file.name.split(".").pop()!
-      : file.type.split("/").pop() || "img";
     const filename = `${sanitizeFilename(title || "חישוב")} - ${sanitizeFilename(
       d.note || "ניכוי"
-    )} - ${datePart}.${ext}`;
+    )} - ${datePart}.${compressed.ext}`;
+
     const att: ImageAttachment = {
       filename,
-      mime: file.type || "application/octet-stream",
-      dataUrl,
+      mime: compressed.mime,
+      dataUrl: compressed.dataUrl,
       addedAt: new Date().toISOString(),
     };
     updateDeduction(d.id, { attachment: att });
@@ -196,18 +380,23 @@ export default function Calculator({ initial, onSave }: Props) {
       title: title?.trim() || "חישוב ללא שם",
       createdAt: initial?.createdAt ?? new Date().toISOString(),
       percent,
-      // המרה חזרה למספרים בעת שמירה
+      monthYear, // ✅ השדה החדש
       items: items.map<CalcItem>(({ id, value }) => ({ id, value: toNum(value) })),
-      deductions: deductions.map<Deduction>(({ id, note, amount, attachment }) => ({
-        id,
-        note: note || "",
-        amount: toNum(amount),
-        attachment,
-      })),
+      deductions: deductions.map<Deduction>(({ id, note, amount, attachment }) => {
+        const base = { id, note: note || "", amount: toNum(amount) } as Deduction;
+        return attachment ? { ...base, attachment } : base;
+      }),
     };
+
     setSaving(true);
     try {
       await onSave(session);
+      setSnack({ open: true, msg: "נשמר בהצלחה", severity: "success" });
+      setJustSaved(true);
+      window.setTimeout(() => setJustSaved(false), 1600);
+    } catch (err) {
+      console.error(err);
+      setSnack({ open: true, msg: "שמירה נכשלה", severity: "error" });
     } finally {
       setSaving(false);
     }
@@ -225,13 +414,9 @@ export default function Calculator({ initial, onSave }: Props) {
   // כותרת – בקרים משמאל
   const headerControls = (
     <Stack direction="row" spacing={1.5} alignItems="center" flexWrap="wrap" sx={{ rowGap: 1 }}>
-      <TextField
-        label="חודש/שנה"
-        type="month"
-        value={monthYear}
-        onChange={(e) => setMonthYear(e.target.value)}
-        sx={{ width: 160, "& .MuiFilledInput-input": { py: 1.4, px: 2 } }}
-      />
+      {/* החלפת type="month" לשדה ממוספר עם פופאובר */}
+      <MonthYearField label="חודש/שנה" value={monthYear} onChange={setMonthYear} />
+
       <ToggleButtonGroup
         exclusive
         value={[10, 20].includes(percent) ? percent : null}
@@ -264,20 +449,29 @@ export default function Calculator({ initial, onSave }: Props) {
   );
 
   return (
-    <Card variant="outlined" sx={{ width: "100%" }}>
+    <Card variant="outlined" sx={{ width: "100%", borderRadius: 3 }}>
       <CardHeader
         titleTypographyProps={{ fontWeight: 900 }}
         title="מחשבון + אחוזים"
         subheader="RTL מינימליסטי, ברור ומותאם"
         action={headerControls}
-        sx={{ pb: 1 }}
+        sx={{ px: 3, pt: 2, pb: 1.5 }}
       />
 
-      <CardContent sx={{ pt: 1.25 }}>
-        <Stack spacing={2.5} sx={{ width: "100%" }}>
+      <CardContent sx={{ p: 3 }}>
+        <Stack spacing={3} sx={{ width: "100%" }}>
           {/* סכומים — 1/2/4 טורים */}
-          <Box sx={{ width: "100%" }}>
-            <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1.25 }}>
+          <Box
+            sx={{
+              width: "100%",
+              p: 2.25,
+              bgcolor: "grey.50",
+              borderRadius: 2,
+              border: "1px solid",
+              borderColor: "divider",
+            }}
+          >
+            <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1.5 }}>
               <Typography variant="h6" fontWeight={800} sx={{ mb: 0.25 }}>
                 סכומים
               </Typography>
@@ -290,7 +484,7 @@ export default function Calculator({ initial, onSave }: Props) {
               sx={{
                 display: "grid",
                 gridTemplateColumns: { xs: "1fr", sm: "repeat(2, 1fr)", md: "repeat(4, 1fr)" },
-                gap: 1.5,
+                gap: 2,
                 width: "100%",
               }}
             >
@@ -306,7 +500,7 @@ export default function Calculator({ initial, onSave }: Props) {
                     updateItem(it.id, raw === "" ? "" : Number(raw));
                   }}
                   sx={{
-                    "& .MuiFilledInput-input": { py: 1.45, px: 2 },
+                    "& .MuiFilledInput-input": { py: 1.6, px: 2 },
                     "& .MuiInputLabel-root.MuiInputLabel-shrink": { marginBottom: "6px" },
                   }}
                   InputProps={{
@@ -334,13 +528,22 @@ export default function Calculator({ initial, onSave }: Props) {
           </Box>
 
           {/* ניכויים */}
-          <Box sx={{ width: "100%" }}>
+          <Box
+            sx={{
+              width: "100%",
+              p: 2.5,
+              bgcolor: "grey.50",
+              borderRadius: 2,
+              border: "1px solid",
+              borderColor: "divider",
+            }}
+          >
             <Stack
               direction={{ xs: "column", sm: "row" }}
-              spacing={1.25}
+              spacing={1.5}
               alignItems={{ xs: "stretch", sm: "center" }}
               justifyContent="space-between"
-              sx={{ mb: 1.25 }}
+              sx={{ mb: 1.5 }}
             >
               <Typography variant="h6" fontWeight={800} sx={{ mb: 0.25 }}>
                 ניכויים{" "}
@@ -362,7 +565,7 @@ export default function Calculator({ initial, onSave }: Props) {
               </Stack>
             </Stack>
 
-            <Stack spacing={1.5} sx={{ width: "100%" }}>
+            <Stack spacing={2} sx={{ width: "100%" }}>
               {deductions.map((d) => (
                 <Box
                   key={d.id}
@@ -371,7 +574,7 @@ export default function Calculator({ initial, onSave }: Props) {
                     flexWrap: { xs: "wrap", sm: "nowrap" },
                     alignItems: "center",
                     justifyContent: "space-between",
-                    gap: 1.25,
+                    gap: 1.5,
                     width: "100%",
                   }}
                 >
@@ -387,7 +590,7 @@ export default function Calculator({ initial, onSave }: Props) {
                       }}
                       InputProps={{ inputProps: { step: "any" } }}
                       sx={{
-                        "& .MuiFilledInput-input": { py: 1.45, px: 2 },
+                        "& .MuiFilledInput-input": { py: 1.6, px: 2 },
                         "& .MuiInputLabel-root.MuiInputLabel-shrink": { marginBottom: "6px" },
                       }}
                     />
@@ -400,7 +603,7 @@ export default function Calculator({ initial, onSave }: Props) {
                       value={d.note}
                       onChange={(e) => updateDeduction(d.id, { note: e.target.value })}
                       sx={{
-                        "& .MuiFilledInput-input": { py: 1.45, px: 2 },
+                        "& .MuiFilledInput-input": { py: 1.6, px: 2 },
                         "& .MuiInputLabel-root.MuiInputLabel-shrink": { marginBottom: "6px" },
                       }}
                     />
@@ -445,7 +648,7 @@ export default function Calculator({ initial, onSave }: Props) {
                       </Tooltip>
                       <Tooltip title="מחק ניכוי">
                         <IconButton color="error" onClick={() => removeDeduction(d.id)}>
-                        <DeleteOutlineIcon />
+                          <DeleteOutlineIcon />
                         </IconButton>
                       </Tooltip>
                     </Stack>
@@ -460,7 +663,7 @@ export default function Calculator({ initial, onSave }: Props) {
             </Stack>
           </Box>
 
-          <Divider sx={{ my: 1.25 }} />
+          <Divider sx={{ my: 2.5 }} />
 
           {/* KPIs – 6 טורים בשורה אחת ב-md+ */}
           <Box
@@ -468,7 +671,7 @@ export default function Calculator({ initial, onSave }: Props) {
               width: "100%",
               display: "grid",
               gridTemplateColumns: { xs: "1fr", sm: "repeat(3, 1fr)", md: "repeat(6, 1fr)" },
-              gap: 1.25,
+              gap: 1.5,
             }}
           >
             <Kpi title="סכום (ללא אחוז)" value={nf.format(sum)} />
@@ -479,10 +682,34 @@ export default function Calculator({ initial, onSave }: Props) {
             <Kpi title="חריגת ניכויים (אם יש)" value={overDeducted > 0 ? nf.format(overDeducted) : "—"} />
           </Box>
 
-          <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between" sx={{ width: "100%" }}>
+          {/* שורת פעולה תחתונה */}
+          <Stack
+            direction="row"
+            spacing={1.5}
+            alignItems="center"
+            justifyContent="space-between"
+            sx={{ width: "100%", mt: 2, pt: 1 }}
+          >
             <Chip label={`ניכויים עד כה: ${nf.format(deductionsSum)}`} variant="outlined" />
-            <Button onClick={handleSave} disabled={saving}>
-              💾 שמירה
+
+            <Button
+              onClick={handleSave}
+              disabled={saving}
+              variant="contained"
+              color={justSaved ? "success" : "primary"}
+              size="large"
+              startIcon={
+                saving ? (
+                  <CircularProgress size={18} thickness={5} />
+                ) : justSaved ? (
+                  <CheckCircleOutlineIcon />
+                ) : (
+                  <SaveOutlinedIcon />
+                )
+              }
+              sx={{ minWidth: 140, fontWeight: 700 }}
+            >
+              {saving ? "שומר…" : justSaved ? "נשמר" : "שמירה"}
             </Button>
           </Stack>
         </Stack>
@@ -531,6 +758,23 @@ export default function Calculator({ initial, onSave }: Props) {
           </>
         )}
       </Dialog>
+
+      {/* Snackbar לחיווי שמירה */}
+      <Snackbar
+        open={snack.open}
+        autoHideDuration={2200}
+        onClose={() => setSnack((s) => ({ ...s, open: false }))}
+        anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
+      >
+        <Alert
+          onClose={() => setSnack((s) => ({ ...s, open: false }))}
+          severity={snack.severity}
+          variant="filled"
+          sx={{ width: "100%" }}
+        >
+          {snack.msg}
+        </Alert>
+      </Snackbar>
     </Card>
   );
 }

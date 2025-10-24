@@ -16,10 +16,12 @@
     "@mui/material": "^7.3.4",
     "clsx": "^2.1.1",
     "file-saver": "^2.0.5",
+    "firebase": "^12.4.0",
     "jszip": "^3.10.1",
     "lowdb": "^7.0.1",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
+    "react-router-dom": "^7.9.4",
     "stylis": "^4.3.6",
     "stylis-plugin-rtl": "^2.1.1",
     "uuid": "^13.0.0"

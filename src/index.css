@@ -162,3 +162,7 @@ body {
   .MuiInputLabel-root {
   font-weight: 500;
 }
+.calc-grid {
+  flex-basis: calc(33.333% - 16px) !important;
+  max-width: calc(33.333% - 16px) !important;
+}
